@@ -30,23 +30,19 @@ contract MultisigWallet {
     }
 
     modifier txNotExecuted(uint256 txId) {
-        require(!transactions[txId].executed, 'transaction executed');
+        require(!transactions[txId].executed, 'transaction already executed');
         _;
     }
 
     modifier txNotConfirmed(uint256 txId) {
-        require(
-            !isConfirmed[txId][msg.sender],
-            'transaction already confirmed'
-        );
+        require(!isConfirmed[txId][msg.sender], 'transaction already confirmed');
         _;
     }
 
     constructor(address[] memory _owners, uint256 _requiredNumOfConfirmations) {
         require(_owners.length > 0, 'owners required');
         require(
-            _requiredNumOfConfirmations > 0 &&
-                _requiredNumOfConfirmations <= _owners.length,
+            _requiredNumOfConfirmations > 0 && _requiredNumOfConfirmations <= _owners.length,
             'invalid number of confirmations'
         );
 
@@ -63,6 +59,8 @@ contract MultisigWallet {
         requiredNumOfConfirmations = _requiredNumOfConfirmations;
     }
 
+    receive() external payable {}
+
     function submitTransaction(
         address _to,
         uint256 _value,
@@ -71,44 +69,22 @@ contract MultisigWallet {
         // uint256 txId = transactions.length;
 
         transactions.push(
-            Transaction({
-                to: _to,
-                value: _value,
-                data: _data,
-                executed: false,
-                numberOfConfirmations: 0
-            })
+            Transaction({to: _to, value: _value, data: _data, executed: false, numberOfConfirmations: 0})
         );
     }
 
-    function confirmTransaction(uint256 txId)
-        public
-        onlyOwner
-        txExists(txId)
-        txNotConfirmed(txId)
-        txNotExecuted(txId)
-    {
+    function confirmTransaction(uint256 txId) public onlyOwner txExists(txId) txNotConfirmed(txId) txNotExecuted(txId) {
         Transaction storage transaction = transactions[txId];
         transaction.numberOfConfirmations += 1;
         isConfirmed[txId][msg.sender] = true;
     }
 
-    function executeTransaction(uint256 txId)
-        public
-        onlyOwner
-        txExists(txId)
-        txNotExecuted(txId)
-    {
+    function executeTransaction(uint256 txId) public onlyOwner txExists(txId) txNotExecuted(txId) {
         Transaction storage transaction = transactions[txId];
 
-        require(
-            transaction.numberOfConfirmations >= requiredNumOfConfirmations,
-            'not enough confirmations'
-        );
+        require(transaction.numberOfConfirmations >= requiredNumOfConfirmations, 'not enough confirmations');
 
-        (bool success, ) = transaction.to.call{value: transaction.value}(
-            transaction.data
-        );
+        (bool success, ) = transaction.to.call{value: transaction.value}(transaction.data);
         require(success, 'tx failed');
 
         transaction.executed = true;
