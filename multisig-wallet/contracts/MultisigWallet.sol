@@ -39,6 +39,12 @@ contract MultisigWallet {
         _;
     }
 
+    event Deposit(address indexed sender, uint256 value);
+    event SubmitTransaction(address indexed owner, uint256 indexed txId, address indexed to, uint256 value, bytes data);
+    event ConfirmTransaction(address indexed owner, uint256 indexed txId);
+    event RevokeConfirmation(address indexed owner, uint256 indexed txId);
+    event ExecuteTransaction(address indexed owner, uint256 indexed txId);
+
     constructor(address[] memory _owners, uint256 _requiredNumOfConfirmations) {
         require(_owners.length > 0, 'owners required');
         require(
@@ -59,24 +65,41 @@ contract MultisigWallet {
         requiredNumOfConfirmations = _requiredNumOfConfirmations;
     }
 
-    receive() external payable {}
+    receive() external payable {
+        emit Deposit(msg.sender, msg.value);
+    }
 
     function submitTransaction(
         address _to,
         uint256 _value,
         bytes calldata _data
     ) public onlyOwner {
-        // uint256 txId = transactions.length;
+        uint256 txId = transactions.length;
 
         transactions.push(
             Transaction({to: _to, value: _value, data: _data, executed: false, numberOfConfirmations: 0})
         );
+
+        emit SubmitTransaction(msg.sender, txId, _to, _value, _data);
     }
 
     function confirmTransaction(uint256 txId) public onlyOwner txExists(txId) txNotConfirmed(txId) txNotExecuted(txId) {
         Transaction storage transaction = transactions[txId];
         transaction.numberOfConfirmations += 1;
         isConfirmed[txId][msg.sender] = true;
+
+        emit ConfirmTransaction(msg.sender, txId);
+    }
+
+    function revokeConfirmation(uint256 txId) public onlyOwner txExists(txId) txNotExecuted(txId) {
+        Transaction storage transaction = transactions[txId];
+
+        require(isConfirmed[txId][msg.sender], 'transaction not confirmed');
+
+        transaction.numberOfConfirmations -= 1;
+        isConfirmed[txId][msg.sender] = false;
+
+        emit RevokeConfirmation(msg.sender, txId);
     }
 
     function executeTransaction(uint256 txId) public onlyOwner txExists(txId) txNotExecuted(txId) {
@@ -88,6 +111,8 @@ contract MultisigWallet {
         require(success, 'tx failed');
 
         transaction.executed = true;
+
+        emit ExecuteTransaction(msg.sender, txId);
     }
 
     function getOwners() public view returns (address[] memory) {
